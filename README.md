@@ -2,5 +2,5 @@
 
 ### 目前存放了：
 #### 1. Tower in NCU
-#### 2. 中國象棋
+#### 2. Chinese chess
 #### 3. Pipeline
