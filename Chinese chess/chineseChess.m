@@ -22,7 +22,7 @@ function varargout = chineseChess(varargin)
 
 % Edit the above text to modify the response to help chineseChess
 
-% Last Modified by GUIDE v2.5 24-May-2015 13:12:16
+% Last Modified by GUIDE v2.5 05-Jun-2015 01:40:09
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -62,8 +62,11 @@ guidata(hObject, handles);
 % uiwait(handles.figure1);
 
 % show background
-backgroundImage = imread('background.jpg');
-image(backgroundImage);
+
+handles.backgroundImage = imread('pic/board.png');
+axes(handles.background);
+image(handles.backgroundImage);
+axis off;
 
 % initialize board status
 % 0    ªÅ®æ
@@ -77,42 +80,31 @@ image(backgroundImage);
 
 global buttons;
 clc
+handles.string = char('space', 'rking', 'rguard', 'relephant', 'rhorse', ...
+                    'rcar', 'rcanon', 'rsoldier', ...
+                    'bking', 'bguard', 'belephant', 'bhorse', ...
+                    'bcar', 'bcanon', 'bsoldier');
+for i = 1 : size(handles.string, 1)
+    name = handles.string(i, :);
+    name = name(~isspace(name));
+    handles.([name 'Image']) = imread(['pic/' name '.png']);
+    handles.([name 'ImageWhite']) = getOuterWhite(handles.([name 'Image']));
+end
 handles.board = zeros(9, 10);
-handles.board(1, 1) = 3;
-handles.board(2, 1) = 4;
-handles.board(3, 1) = 5;
-handles.board(4, 1) = 6;
-handles.board(5, 1) = 7;
-handles.board(6, 1) = 6;
-handles.board(7, 1) = 5;
-handles.board(8, 1) = 4;
-handles.board(9, 1) = 3;
-handles.board(1, 4) = 1;
-handles.board(3, 4) = 1;
-handles.board(5, 4) = 1;
-handles.board(7, 4) = 1;
-handles.board(9, 4) = 1;
-handles.board(2, 3) = 2;
-handles.board(8, 3) = 2;
-handles.board(1, 10) = -3;
-handles.board(2, 10) = -4;
-handles.board(3, 10) = -5;
-handles.board(4, 10) = -6;
-handles.board(5, 10) = -7;
-handles.board(6, 10) = -6;
-handles.board(7, 10) = -5;
-handles.board(8, 10) = -4;
-handles.board(9, 10) = -3;
-handles.board(1, 7) = -1;
-handles.board(3, 7) = -1;
-handles.board(5, 7) = -1;
-handles.board(7, 7) = -1;
-handles.board(9, 7) = -1;
-handles.board(2, 8) = -2;
-handles.board(8, 8) = -2;
-
+handles.board = ...
+            [
+                3   0   0   1   0   0   -1  0   0   -3;
+                4   0   2   0   0   0   0  -2   0   -4;
+                5   0   0   1   0   0   -1  0   0   -5;
+                6   0   0   0   0   0   0   0   0   -6;
+                7   0   0   1   0   0   -1  0   0   -7;
+                6   0   0   0   0   0   0   0   0   -6;
+                5   0   0   1   0   0   -1  0   0   -5;
+                4   0   2   0   0   0   0  -2  0    -4;
+                3   0   0   1   0   0   -1  0   0   -3;];
+                
 % used for controlling game.
-handles.player = 1;
+handles.player = 2;
 handles.ipr = 0;
 handles.ipc = 0;
 handles.fpr = 0;
@@ -128,7 +120,8 @@ for i = 1:9
     for j = 1:5
         buttons.(['board' num2str(i) num2str(j)]) = ...
             uicontrol('Style', 'pushbutton', ...
-                'Position', [35 + 50 * (i - 1) 35 + 50 * (j - 1) 30 30], ...
+                'Units', 'pixels', ...
+                'Position', [20 + 52 * (i - 1) 25 + 52 * (j - 1) 32 32], ...
                 'Fontsize', 15, ...
                 'Callback', {@selectChess});
     end
@@ -138,7 +131,7 @@ for i = 1:9
     for j = 6:10
         buttons.(['board' num2str(i) num2str(j)]) = ...
             uicontrol('Style', 'pushbutton', ...
-                'Position', [35 + 50 * (i - 1) 288 + 50 * (j - 6) 30 30], ...
+                'Position', [20 + 52 * (i - 1) 290 + 52 * (j - 6) 32 32], ...
                 'Fontsize', 15, ...
                 'Callback', {@selectChess});
     end
@@ -146,14 +139,15 @@ end
 buttons.playerMove = uicontrol('Style', 'pushbutton', ...
                     'Position', [565 460 30 30], ...
                     'Fontsize', 15);
-                
+
 buttons.playerSelect = uicontrol('Style', 'pushbutton', ...
                     'Position', [535 360 90 30], ...
                     'Fontsize', 15);
+
 buttons.history = uicontrol('Style', 'listbox', ...
                     'Position', [515 50 130 250], ...
                     'Fontsize', 10);
-                    
+
 draw(handles);
 guidata(hObject, handles);
 
@@ -167,7 +161,6 @@ function varargout = chineseChess_OutputFcn(hObject, eventdata, handles)
 % Get default command line output from handles structure
 varargout{1} = handles.output;
 
-%
 function selectChess(hObject, eventdata)
 handles = guidata(hObject);
 cur = gcbo;
@@ -226,3 +219,50 @@ function Exit_Callback(hObject, eventdata, handles)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
 close();
+
+function [ white ] = getOuterWhite( img )
+img = double(img)/255;
+index1 = img(:,:,1) == 1;
+index2 = img(:,:,2) == 1;
+index3 = img(:,:,3) == 1;
+white = index1+index2+index3==3;
+white = findOuterWhite(white);
+
+function [ res ] = findOuterWhite(array)
+outer = array;
+[n m] = size(array);
+outer = floodFill(1, 1, outer, 0);
+outer = floodFill(m, 1, outer, 0);
+outer = floodFill(1, n, outer, 0);
+outer = floodFill(m, n, outer, 0);
+res = xor(outer, array);
+
+function [ array ] = floodFill(x, y, array, value)
+import java.util.LinkedList
+q = LinkedList();
+
+%flood fill image 
+[n m] = size(array);
+array(y, x) = value;
+q.add([y, x]);
+while q.size() > 0
+    pt = q.removeLast();
+    y = pt(1);
+    x = pt(2);
+    if (y < n && array(y+1, x) ~= value) 
+        array(y+1,x) = value;
+        q.add([y+1, x]); 
+    end
+    if (y > 1 && array(y-1, x) ~= value) 
+        array(y-1,x) = value;
+        q.add([y-1, x]); 
+    end
+    if (x < m && array(y, x+1) ~= value) 
+        array(y,x+1) = value;
+        q.add([y, x+1]); 
+    end
+    if (x > 1 && array(y, x-1) ~= value) 
+        array(y,x-1) = value;
+        q.add([y, x-1]); 
+    end
+end
