@@ -1,5 +1,6 @@
 movingAverage <- function(v){
-    n <- 21
+    n <- 51
+    N <- nrow(v)
     f <- rep(1 / n, n)
     v[, 2] <- filter(v[, 2], f, side = 2)
     v[, 3] <- filter(v[, 3], f, side = 2)
@@ -26,9 +27,7 @@ getRotationMatrixFromVector <- function(yaw, pitch, roll){
     rollRotation <- matrix(c(1, 0, 0,
                              0, cos(roll), -sin(roll),
                              0, sin(roll), cos(roll)), nrow = 3, ncol = 3, byrow = TRUE)
-    ret <- rollRotation %*% ret
-    ret <- pitchRotation %*% ret
-    ret <- yawRotation %*% ret
+    ret <- yawRotation %*% pitchRotation %*% rollRotation %*% ret
     return (ret)
 }
 
@@ -41,7 +40,7 @@ getVectorFromRoationMatrix <- function(rotationMatrix){
 }
 
 # Fusion Parameter
-FILTER_COEF <- 0.02
+FILTER_COEF <- 0.98
 
 acc <- read.table("Acc.txt", sep = ",")
 gyr <- read.table("Gyr.txt", sep = ",")
@@ -50,11 +49,6 @@ mag <- read.table("Mag.txt", sep = ",")
 names(acc) <- c("Time", "x", "y", "z")
 names(gyr) <- c("Time", "x", "y", "z")
 names(mag) <- c("Time", "x", "y", "z")
-names(gps) <- c("Time", "Lat", "Long", "Height" , "Speed", "Bearing")
-
-acc <- movingAverage(acc)
-gyr <- movingAverage(gyr)
-mag <- movingAverage(mag)
 
 acc$Time <- acc$Time - acc$Time[1]
 gyr$Time <- gyr$Time - gyr$Time[1]
@@ -76,10 +70,9 @@ for(t in 1:(N-1)){
     # find min of the length between [st, end]
     st = 1;
     end = t;
-    if(t - 200 >= 1)st = t - 200
-    if((end - st + 1) %% 2 == 0) st <- st + 1  
-    medValue = median(sqrt(acc[st:end,2]^2+acc[st:end,3]^2+acc[st:end,4]^2))
-    idx = which(sqrt(acc[st:end,2]^2+acc[st:end,3]^2+acc[st:end,4]^2) == medValue) + st
+    if(t - 200 >= 1)st = t - 200  
+    minValue = min(sqrt(acc[st:end,2]^2+acc[st:end,3]^2+acc[st:end,4]^2))
+    idx = which(sqrt(acc[st:end,2]^2+acc[st:end,3]^2+acc[st:end,4]^2) == minValue) + st
     
     G <- acc[idx, 2:4]
     
@@ -99,7 +92,7 @@ for(t in 1:(N-1)){
     
     buff <- rep(0, 5)
     buff[1] <- acc$Time[t]
-    buff[2:4] <- tranStoE %*% as.numeric(acc[t, 2:4])
+    buff[2:4] <- tranStoE %*% (as.numeric(acc[t, 2:4]) - as.numeric(G))
     
     # acc, mag: azimuth, pitch, roll
     pitch <- -atan2(sqrt(c[2]^2 + c[3]^2), c[1])
@@ -119,9 +112,9 @@ for(t in 1:(N-1)){
     
     # gyro
     # TODO:
-    # use integration to calculate.
+    # use integration to calculate diff.
     
-    gyroOrientationVector <- gyr[t, 2:4] * (gyr$Time[t + 1] - gyr$Time[t])
+    gyroOrientationVector <- gyr[t, 2:4] * (gyr$Time[t + 1] - gyr$Time[t]) / 1000
     gyroOrientation <- getRotationMatrixFromVector(gyroOrientationVector$z, gyroOrientationVector$y, gyroOrientationVector$x)
     
     if(sqrt(sum(gyroOrientationVector^2)) > 0.0001){
@@ -135,14 +128,8 @@ for(t in 1:(N-1)){
     gyroMatrix <- getRotationMatrixFromVector(fusedOrientationVector[3], fusedOrientationVector[2], fusedOrientationVector[1])
     
     # fusedOrientationVector <- tranStoE %*% fusedOrientationVector
-    buff[5] <- ((fusedOrientationVector[3] * 180 / pi + 360) %% 360)
+    
+    buff[5] <- fusedOrientationVector[3] * 180 / pi
     
     accE[nrow(accE) + 1, ] <- buff
 }
-
-draw <- function(v){
-    plot(v$Time, v$x, type = "l")
-    lines(v$Time, v$y, col = "red")
-    lines(v$Time, v$z, col = "blue")
-}
-
