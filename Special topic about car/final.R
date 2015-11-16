@@ -1,43 +1,4 @@
-movingAverage <- function(v){
-    n <- 51
-    N <- nrow(v)
-    f <- rep(1 / n, n)
-    v[, 2] <- filter(v[, 2], f, side = 2)
-    v[, 3] <- filter(v[, 3], f, side = 2)
-    v[, 4] <- filter(v[, 4], f, side = 2)
-    v <- v[(-N):-(N-n/2), ]
-    v <- v[(-1):-(n/2), ]
-    return (v)
-}
-
-cross <- function(a, b){
-    return (c(a[2] * b[3] - a[3] * b[2],
-              a[3] * b[1] - a[1] * b[3],
-              a[1] * b[2] - a[2] * b[1]))
-}
-
-getRotationMatrixFromVector <- function(yaw, pitch, roll){
-    ret <- diag(3)
-    yawRotation <- matrix(c(cos(yaw), -sin(yaw), 0,
-                            sin(yaw), cos(yaw), 0,
-                            0, 0, 1), nrow = 3, ncol = 3, byrow = TRUE)
-    pitchRotation <- matrix(c(cos(pitch), 0, sin(pitch),
-                              0, 1, 0,
-                              -sin(pitch), 0, cos(pitch)), nrow = 3, ncol = 3, byrow = TRUE)
-    rollRotation <- matrix(c(1, 0, 0,
-                             0, cos(roll), -sin(roll),
-                             0, sin(roll), cos(roll)), nrow = 3, ncol = 3, byrow = TRUE)
-    ret <- yawRotation %*% pitchRotation %*% rollRotation %*% ret
-    return (ret)
-}
-
-# need to confirm
-getVectorFromRoationMatrix <- function(rotationMatrix){
-    roll <- atan2(rotationMatrix[3, 2], rotationMatrix[3, 3])
-    pitch <- atan2(-rotationMatrix[3, 1], rotationMatrix[3, 2] / sin(roll))
-    yaw <- atan2(rotationMatrix[2, 1], rotationMatrix[1, 1])
-    return (c(roll, pitch, yaw))
-}
+source("helper.R")
 
 # Fusion Parameter
 FILTER_COEF <- 0.98
@@ -53,6 +14,12 @@ names(mag) <- c("Time", "x", "y", "z")
 acc$Time <- acc$Time - acc$Time[1]
 gyr$Time <- gyr$Time - gyr$Time[1]
 mag$Time <- mag$Time - mag$Time[1]
+
+#acc <- movingAverage(acc)
+#gyr <- movingAverage(gyr)
+#mag <- movingAverage(mag)
+
+tmp <- data.frame(Time = numeric(0), azimuth = numeric(0), pitch = numeric(0), roll = numeric(0))
 
 # acc in earth frame: x, y, z
 # carAzimuth is car heading
@@ -71,65 +38,52 @@ for(t in 1:(N-1)){
     st = 1;
     end = t;
     if(t - 200 >= 1)st = t - 200  
-    minValue = min(sqrt(acc[st:end,2]^2+acc[st:end,3]^2+acc[st:end,4]^2))
-    idx = which(sqrt(acc[st:end,2]^2+acc[st:end,3]^2+acc[st:end,4]^2) == minValue) + st
+    if((end - st + 1) %% 2 == 0) st <- st + 1
+    medValue = median(sqrt(acc[st:end,2]^2+acc[st:end,3]^2+acc[st:end,4]^2))
+    idx = which(sqrt(acc[st:end,2]^2+acc[st:end,3]^2+acc[st:end,4]^2) == medValue) + st
     
-    G <- acc[idx, 2:4]
+    G <- as.numeric(acc[idx, 2:4])
     
-    # c is gravity (point to down)
-    # b is east
-    # a is north
-    c <- as.numeric(G / sqrt(sum(G^2)))
-    b <- as.numeric(cross(c, mag[t, 2:4] / sqrt(sum(mag[t, 2:4]^2))))
-    b <- b / sqrt(sum(b^2))
-    a <- as.numeric(cross(b, c))
-    a <- a / sqrt(sum(a^2))
+    rotationMatrix <- getRotationMatrix(G, as.numeric(mag[t, ]))
+    accMagOrientation <- getOrientation(rotationMatrix)
     
     if(t == 1){
-        tranStoE <- matrix(c(a,b,c), nrow = 3, ncol = 3)
-        tranStoE <- solve(tranStoE)
+        initMatrix <- getRotationMatrixFromOrientation(accMagOrientation)
+        gyroMatrix <- gyroMatrix %*% initMatrix
+        gyroOrientation <- accMagOrientation
     }
     
     buff <- rep(0, 5)
     buff[1] <- acc$Time[t]
-    buff[2:4] <- tranStoE %*% (as.numeric(acc[t, 2:4]) - as.numeric(G))
-    
-    # acc, mag: azimuth, pitch, roll
-    pitch <- -atan2(sqrt(c[2]^2 + c[3]^2), c[1])
-    roll <- -atan2(sqrt(c[1]^2 + c[3]^2), c[2])
-    if(abs(roll * 180 / pi) <= 100 && abs(roll * 180 / pi) >= 80){
-        azimuth <- (360 + atan2(a[1], b[1]) * 180 / pi - 90) %% 360
-    } else{
-        azimuth <- (360 + atan2(a[2], b[2]) * 180 / pi) %% 360
-    }
-    azimuth <- azimuth / 180 * pi
-    accMagOrientationVector <- c(roll, pitch, azimuth)
-    
-    if(t == 1){
-        accMagOrientation <- getRotationMatrixFromVector(azimuth, pitch, roll)
-        gyroMatrix <- accMagOrientation
-    }
-    
-    # gyro
-    # TODO:
-    # use integration to calculate diff.
-    
-    gyroOrientationVector <- gyr[t, 2:4] * (gyr$Time[t + 1] - gyr$Time[t]) / 1000
-    gyroOrientation <- getRotationMatrixFromVector(gyroOrientationVector$z, gyroOrientationVector$y, gyroOrientationVector$x)
-    
-    if(sqrt(sum(gyroOrientationVector^2)) > 0.0001){
-        tranStoNextS <- gyroOrientation
-        tranStoE <- tranStoNextS %*% tranStoE
-    }
-    
-    gyroMatrix <- gyroOrientation %*% gyroMatrix
-    gyroVector <- getVectorFromRoationMatrix(gyroMatrix)
-    fusedOrientationVector <- FILTER_COEF * gyroVector + (1 - FILTER_COEF) * accMagOrientationVector
-    gyroMatrix <- getRotationMatrixFromVector(fusedOrientationVector[3], fusedOrientationVector[2], fusedOrientationVector[1])
-    
-    # fusedOrientationVector <- tranStoE %*% fusedOrientationVector
-    
-    buff[5] <- fusedOrientationVector[3] * 180 / pi
+    buff[2:4] <- gyroMatrix %*% as.numeric(acc[t, 2:4] - G)
+    buff[5] <- gyroOrientation[1]
     
     accE[nrow(accE) + 1, ] <- buff
+    
+    dT <- (acc$Time[t + 1] - acc$Time[t]) / 1000 # ms to s
+    deltaVector <- getRotationVectorFromGyro(as.numeric(gyr[t, 2:4]), dT / 2)
+    deltaMatrix <- getRotationMatrixFromVector(deltaVector)
+    gyroMatrix <- gyroMatrix %*% deltaMatrix
+    gyroOrientation <- getOrientation(gyroMatrix)
+    
+    fusedOrientation <- rep(0, 3)
+    for(i in 1:3){
+        if (gyroOrientation[i] < -0.5 * pi && accMagOrientation[i] > 0.0) {
+            fusedOrientation[i] <- FILTER_COEF * (gyroOrientation[i] + 2.0 * pi) + (1 - FILTER_COEF) * accMagOrientation[i]
+            if(fusedOrientation[i] > pi)
+                fusedOrientation[i] <- fusedOrientation[i] - 2.0 * pi
+        }
+        else if (accMagOrientation[i] < -0.5 * pi && gyroOrientation[i] > 0.0) {
+            fusedOrientation[i] = FILTER_COEF * gyroOrientation[i] + (1 - FILTER_COEF) * (accMagOrientation[i] + 2.0 * pi)
+            if(fusedOrientation[i] > pi)
+                fusedOrientation[i] <- fusedOrientation[i] - 2.0 * pi
+        }
+        else {
+            fusedOrientation[i] = FILTER_COEF * gyroOrientation[i] + (1 - FILTER_COEF) * accMagOrientation[i];
+        }
+    }
+    
+    gyroMatrix <- getRotationMatrixFromOrientation(fusedOrientation)
+    gyroOrientation <- fusedOrientation
+    
 }
