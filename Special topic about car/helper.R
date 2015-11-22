@@ -4,7 +4,7 @@
 #   n:  smooth range.
 
 movingAverage <- function(v){
-    n <- 51
+    n <- 101
     N <- nrow(v)
     f <- rep(1 / n, n)
     v[, 2] <- filter(v[, 2], f, side = 2)
@@ -40,8 +40,8 @@ getRotationMatrix <- function(gravity, geomanetic){
     if(normH < 0.1){
         return (FALSE)
     }
-    H <- H * (1.0 / normH)
-    A <- A * (1.0 / normA)
+    H <- H / normH
+    A <- A / normA
     M <- cross(A, H)
     R <- matrix(c(H, M, A),nrow = 3, ncol = 3, byrow = TRUE)
     return (R)

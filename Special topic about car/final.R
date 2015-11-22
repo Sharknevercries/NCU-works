@@ -23,7 +23,7 @@ tmp <- data.frame(Time = numeric(0), azimuth = numeric(0), pitch = numeric(0), r
 
 # acc in earth frame: x, y, z
 # carAzimuth is car heading
-accE <- data.frame(Time = numeric(0), x = numeric(0), y = numeric(0), z = numeric(0), carAzimuth = numeric(0))
+accE <- data.frame(Time = numeric(0), x = numeric(0), y = numeric(0), z = numeric(0), azimuth = numeric(0), pitch = numeric(0), roll = numeric(0))
 
 t <- 1
 
@@ -34,29 +34,28 @@ N <- nrow(acc)
 # transStoE
 for(t in 1:(N-1)){
     
-    # find min of the length between [st, end]
     st = 1;
     end = t;
     if(t - 200 >= 1)st = t - 200  
     if((end - st + 1) %% 2 == 0) st <- st + 1
-    medValue = median(sqrt(acc[st:end,2]^2+acc[st:end,3]^2+acc[st:end,4]^2))
+    medValue = min(sqrt(acc[st:end,2]^2+acc[st:end,3]^2+acc[st:end,4]^2))
     idx = which(sqrt(acc[st:end,2]^2+acc[st:end,3]^2+acc[st:end,4]^2) == medValue) + st
     
     G <- as.numeric(acc[idx, 2:4])
     
-    rotationMatrix <- getRotationMatrix(G, as.numeric(mag[t, ]))
+    rotationMatrix <- getRotationMatrix(G, as.numeric(mag[t, 2:4]))
     accMagOrientation <- getOrientation(rotationMatrix)
     
     if(t == 1){
         initMatrix <- getRotationMatrixFromOrientation(accMagOrientation)
         gyroMatrix <- gyroMatrix %*% initMatrix
-        gyroOrientation <- accMagOrientation
+        gyroOrientation <- getOrientation(gyroMatrix)
     }
     
     buff <- rep(0, 5)
     buff[1] <- acc$Time[t]
     buff[2:4] <- gyroMatrix %*% as.numeric(acc[t, 2:4] - G)
-    buff[5] <- gyroOrientation[1]
+    buff[5:7] <- gyroOrientation * 180 / pi
     
     accE[nrow(accE) + 1, ] <- buff
     
@@ -87,3 +86,10 @@ for(t in 1:(N-1)){
     gyroOrientation <- fusedOrientation
     
 }
+
+plot(accE$Time, accE$azimuth)
+axis(side = 1, at = seq(0, 200000, by = 10000))
+plot(accE$Time, accE$pitch, col = "red")
+axis(side = 1, at = seq(0, 200000, by = 10000))
+plot(accE$Time, accE$roll, col = "blue")
+axis(side = 1, at = seq(0, 200000, by = 10000))
