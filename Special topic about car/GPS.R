@@ -44,10 +44,15 @@ WGS84toTWD97 <- function(lat, lon){
 
 # get TM2 xy-coord (m)
 n <- nrow(data)
-TM2 <- array(dim=c(n, 4))
+TM2 <- array(dim=c(n, 5))
 TM2[, 1] <- originData[, 1]
+TM2[, 4] <- originData$V5
+TM2[, 5] <- originData$V6
 for(i in 1:n) 
-    TM2[i,2:3] <- WGS84toTWD97(data[i,1],data[i,2])
+    TM2[i,3:2] <- WGS84toTWD97(data[i,1], data[i,2]) # Latitude => y, longtitude => x
+
+colnames(TM2) <- c("time", "x", "y", "speed", "heading")
+write.table(TM2, file = "TM2.txt", col.names = TRUE, row.names = FALSE)
 
 # moving avg for coordinate
 N1 <- 5 # for curvature

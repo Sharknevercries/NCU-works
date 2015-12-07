@@ -115,20 +115,3 @@ getRotationMatrixFromVector <- function(v){
                   q1_q3 - q2_q0, q2_q3 + q1_q0, 1 - sq_q1 - sq_q2), nrow = 3, ncol = 3, byrow = TRUE)
     return (R)
 }
-
-function(){
-    getRotationMatrixFromVector <- function(yaw, pitch, roll){
-        ret <- diag(3)
-        yawRotation <- matrix(c(cos(yaw), -sin(yaw), 0,
-                                sin(yaw), cos(yaw), 0,
-                                0, 0, 1), nrow = 3, ncol = 3, byrow = TRUE)
-        pitchRotation <- matrix(c(cos(pitch), 0, sin(pitch),
-                                  0, 1, 0,
-                                  -sin(pitch), 0, cos(pitch)), nrow = 3, ncol = 3, byrow = TRUE)
-        rollRotation <- matrix(c(1, 0, 0,
-                                 0, cos(roll), -sin(roll),
-                                 0, sin(roll), cos(roll)), nrow = 3, ncol = 3, byrow = TRUE)
-        ret <- ret %*% yawRotation %*% pitchRotation %*% rollRotation
-        return (ret)
-    }
-}
