@@ -1,20 +1,3 @@
-# Smooth the data
-# param
-#   v:  data in format such c(Time, x, y, z)
-#   n:  smooth range.
-
-movingAverage <- function(v){
-    n <- 101
-    N <- nrow(v)
-    f <- rep(1 / n, n)
-    v[, 2] <- filter(v[, 2], f, side = 2)
-    v[, 3] <- filter(v[, 3], f, side = 2)
-    v[, 4] <- filter(v[, 4], f, side = 2)
-    v <- v[(-N):-(N-n/2), ]
-    v <- v[(-1):-(n/2), ]
-    return (v)
-}
-
 # Cross product
 cross <- function(a, b){
     return (c(a[2] * b[3] - a[3] * b[2],

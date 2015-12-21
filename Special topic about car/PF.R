@@ -1,66 +1,15 @@
-# functions
-## format: x, y
-## Place particles near GPS point, which distance <= GPS_EPS
-randomPosition <- function(idx, n) {
-    pos <- matrix(nrow = n, ncol = 2)
-    colnames(pos) <- c("x", "y")
-    angle <- runif(n, 0, 2 * pi)
-    magnitude <- runif(n, 0, GPS_EPS)
-    pos[1:n, 1] <- GPS_DATA[idx, 2] + magnitude * cos(angle)
-    pos[1:n, 2] <- GPS_DATA[idx, 3] + magnitude * sin(angle)
-    return(pos)
-}
-
-# move particles by ACC_DATA
-## particles: as name.
-## idx: ACC_DATA's index
-## n: total size of the particles
-## timeEclipse: millisec passed
-moveParticles <- function(particles, idx, n, timeEclipse){
-    
-    # ACC_DATA azimuth is degree. Change it to radius
-    # the coordinate system must be changed too.
-    # azimuth 0 degree point to the north.
-    
-    timeEclipse <- timeEclipse / 1000
-    magnitude <- ACC_DATA$magnitude[idx]
-    theta <- parseAzimuth(ACC_DATA$azimuth[idx]) / 180 * pi + runif(n, min = -ANG_EPS, max = ANG_EPS)
-    rand_magnitude <- magnitude + magnitude * runif(n, min = -ACC_EPS, max = ACC_EPS)
-    rand_acc <- matrix(nrow = n, ncol = 2)
-    colnames(rand_acc) <- c("x", "y")
-    rand_acc[, "x"] <- cos(theta) * rand_magnitude
-    rand_acc[, "y"] <- sin(theta) * rand_magnitude
-    
-    particles[, "x"] <- particles[, "x"] + (2 * particles[, "vx"] + rand_acc[, "x"]) * timeEclipse / 2
-    particles[, "y"] <- particles[, "y"] + (2 * particles[, "vy"] + rand_acc[, "y"]) * timeEclipse / 2
-    particles[, "vx"] <- particles[, "vx"] + rand_acc[, "x"] * timeEclipse
-    particles[, "vy"] <- particles[, "vy"] + rand_acc[, "y"] * timeEclipse
-        
-    return (particles)
-}
-
-parseAzimuth <- function(azimuth){
-    theta <- azimuth
-    if(theta <= 0){
-        theta <- (-theta) + 90
-    }else if(theta <= 90){
-        theta <- 90 - theta
-    }else{
-        theta <- theta - 90
-    }
-    return (theta)
-}
+source("PF-helper.R")
 
 #
 # Particle Filters(SIR)
 #
 
 # constants
-MAX_SIZE <- 500 # number of particles
+MAX_SIZE <- 2000 # number of particles
 GPS_EPS <- 5 # meter, circle area
-ACC_EPS <- 0.10 # 100 %
+ACC_EPS <- 0.30 # 100 %
 ANG_EPS <- pi / 3 # +- 60 degree
-ATTEN <- 0.5
+ATTEN <- 0.75
 
 # getData
 GPS_DATA <- read.table("TM2.txt", header = TRUE)
@@ -72,6 +21,8 @@ nrowOfACC_DATA <- nrow(ACC_DATA)
 nrowOfGPS_DATA <- nrow(GPS_DATA)
 
 # initilize
+ret1 <- matrix(nrow = nrow(GPS_DATA), ncol = 4) # predict after using GPS
+ret2 <- matrix(nrow = nrow(GPS_DATA), ncol = 4) # predict before using GPS
 particles <- matrix(nrow = MAX_SIZE, ncol = 5)
 colnames(particles) <- c("x", "y", "vx", "vy", "weight")
 particles[, c("x", "y")] <- randomPosition(1, MAX_SIZE)
@@ -80,6 +31,11 @@ particles[, "weight"] <- rep(1 / MAX_SIZE, MAX_SIZE)
 
 CDF <- array(dim = MAX_SIZE)
 approPos <- c(sum(particles[, "x"]) / MAX_SIZE, sum(particles[, "y"]) / MAX_SIZE)
+ret1[, 1] <- GPS_DATA$Time
+ret1[1, 2:3] <- approPos
+ret2[, 1] <- GPS_DATA$Time
+ret2[1, 2:3] <- approPos
+
 curTimeStamp <- GPS_DATA$Time[1]
 GPSIndex <- 2
 startIndex <- 1
@@ -88,17 +44,17 @@ while(ACC_DATA$Time[startIndex] <= curTimeStamp){
     startIndex <- startIndex + 1
 }
 
-ret <- data.frame(Time = numeric(0), x = numeric(0), y = numeric(0), eff = numeric(0))
-
 # start particle filter
 
 for(i in startIndex:(nrowOfACC_DATA - 1)){
     
     # use GPS observation, this is NOT particle filter.
-    effCount <- MAX_SIZE
     if(GPSIndex <= nrowOfGPS_DATA && ACC_DATA$Time[i] > GPS_DATA$Time[GPSIndex]){
       particles <- moveParticles(particles, i, MAX_SIZE, GPS_DATA$Time[GPSIndex] - curTimeStamp)
       curTimeStamp <- GPS_DATA$Time[GPSIndex] 
+      
+      approPos <- c(sum(particles[, "x"]) / MAX_SIZE, sum(particles[, "y"]) / MAX_SIZE)
+      ret2[GPSIndex, 2:3] <- approPos
       
       effParticles <- particles
       k <- 1
@@ -127,6 +83,12 @@ for(i in startIndex:(nrowOfACC_DATA - 1)){
       effParticles[, "weight"] <- effParticles[, "weight"] / weightSum
       
       particles <- effParticles
+      
+      # predict position
+      approPos <- c(sum(particles[, "x"]) / MAX_SIZE, sum(particles[, "y"]) / MAX_SIZE)
+      ret1[GPSIndex, 2:3] <- approPos
+      ret1[GPSIndex, 4] <- effCount
+      
       GPSIndex <- GPSIndex + 1
     }
     
@@ -139,18 +101,6 @@ for(i in startIndex:(nrowOfACC_DATA - 1)){
         else
             CDF[j] <- CDF[j - 1] + particles[j, "weight"]
     }
-    
-    # predict position
-    approPos <- c(sum(particles[, "x"]) / MAX_SIZE, sum(particles[, "y"]) / MAX_SIZE)
-    print(approPos)
-    #buff <- rep(0, 3)
-    #buff[1] <- ACC_DATA$Time[i]
-    #buff[2:3] <- approPos
-    #buff[4] <- 1
-    
-    #ret[nrow(ret) + 1, ] <- buff
-    
-    # supply up to MAX_SIZE by replicating effective paricles with uniform distribution
     
     # resample
     newParticles <- particles
@@ -165,4 +115,10 @@ for(i in startIndex:(nrowOfACC_DATA - 1)){
     }
     particles[1:MAX_SIZE, ] <- particles[tmp, ]
     particles[, "weight"] <- 1 / MAX_SIZE
+    print(i)
 }
+
+# after GPS observation
+write.table(ret1, file = "predict1.txt", col.names = FALSE, row.names = FALSE)
+# before GPS observation
+write.table(ret2, file = "predict2.txt", col.names = FALSE, row.names = FALSE)
